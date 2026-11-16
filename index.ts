@@ -81,14 +81,27 @@ function saveState(cwd: string, state: State): void {
 // and ends with a blank line. `ctx_search` scans these blocks.
 
 let nextOffloadId = 1;
+// Dedupe index: serialized block body -> block id. The `context` hook fires
+// before *every* LLM call and is non-destructive (the session history is never
+// mutated), so the same leading messages get offered for offload on each call.
+// Without this index we would append the identical block over and over.
+let offloadIndex = new Map<string, number>();
 
 function appendOffload(cwd: string, messages: AgentMessage[], tokens: number): { id: number; start: number } {
+  const text = serializeConversation(convertToLlm(messages));
+  const key = text.trim();
+  const existing = offloadIndex.get(key);
+  if (existing !== undefined) {
+    // Already offloaded this exact content (e.g. a repeat LLM call in the same
+    // turn). Reuse the block instead of appending a duplicate.
+    return { id: existing, start: 0 };
+  }
   fs.mkdirSync(path.dirname(offloadPath(cwd)), { recursive: true });
   const id = nextOffloadId++;
-  const text = serializeConversation(convertToLlm(messages));
   const ts = new Date().toISOString();
   const block = `\n## OFFLOAD ${id} ${ts} ${tokens}\n${text}\n`;
   fs.appendFileSync(offloadPath(cwd), block, "utf8");
+  offloadIndex.set(key, id);
   return { id, start: block.length };
 }
 
@@ -99,11 +112,27 @@ function appendOffload(cwd: string, messages: AgentMessage[], tokens: number): {
 export default function (pi: ExtensionAPI) {
   let cwd = process.cwd();
   let state: State = { limit: DEFAULT_LIMIT };
+  // What the last `context` hook actually sent (post-offload) vs the raw session,
+  // so ctx_status can report a truthful number instead of the untruncated total.
+  let lastRequest: { overhead: number; request: number; session: number; kept: number } | null = null;
+  // How many leading messages have already been written to the offload file this
+  // session. The `context` hook sees the full history every LLM call, so this
+  // lets us write only the not-yet-offloaded delta instead of re-snapshotting.
+  let offloadedUpTo = 0;
 
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
     state = loadState(cwd);
     nextOffloadId = 1;
+    // Rebuild the dedupe index from the existing file so we never append a block
+    // whose content is already present, and continue ids after the highest seen.
+    offloadIndex = new Map();
+    for (const b of readOffloadBlocks(cwd)) {
+      offloadIndex.set(b.text, b.id);
+      if (b.id >= nextOffloadId) nextOffloadId = b.id + 1;
+    }
+    lastRequest = null;
+    offloadedUpTo = 0;
   });
 
   // -------------------------------------------------------------------------
@@ -116,6 +145,13 @@ export default function (pi: ExtensionAPI) {
     const currentTokens = usage?.tokens ?? estimateTotal(messages);
 
     if (currentTokens <= state.limit) {
+      const msgTokens = estimateTotal(messages);
+      lastRequest = {
+        overhead: Math.max(0, currentTokens - msgTokens),
+        request: currentTokens,
+        session: currentTokens,
+        kept: msgTokens,
+      };
       return; // within budget, nothing to do
     }
 
@@ -160,38 +196,47 @@ export default function (pi: ExtensionAPI) {
       keepFrom = messages.length - 1;
     }
 
-    const toOffload = messages.slice(0, keepFrom);
-    if (toOffload.length === 0) {
-      return;
+    // Only the messages between what we already offloaded this session and the
+    // new keep-point need to be written. The `context` hook is non-destructive
+    // (the session history is never mutated), so the same leading messages
+    // reappear on every LLM call; tracking `offloadedUpTo` keeps the file
+    // incremental instead of re-snapshotting the whole prefix each time.
+    if (keepFrom > offloadedUpTo) {
+      const delta = messages.slice(offloadedUpTo, keepFrom);
+      const contentMessages = delta.filter(isContentBearing);
+      const offloadTokens = delta.reduce((sum, m) => sum + estimateTokens(m), 0);
+      if (contentMessages.length > 0) {
+        appendOffload(cwd, contentMessages, offloadTokens);
+      }
+      offloadedUpTo = keepFrom;
     }
 
-    const offloadTokens = toOffload.reduce((sum, m) => sum + estimateTokens(m), 0);
-
-    // Only offload content-bearing messages (skip empty/custom-only noise).
-    const contentMessages = toOffload.filter(isContentBearing);
-
-    // Write to disk (always, even if nothing content-bearing, to record the drop).
-    appendOffload(cwd, contentMessages, offloadTokens);
-
     // Build a compact marker message that stands in for the offloaded history.
-    const marker: Message = {
+    const marker: AgentMessage = {
       role: "user",
       content: [
         {
           type: "text",
           text:
-            `[Earlier conversation offloaded to context file to stay within your ` +
-            `${state.limit}-token budget. ${contentMessages.length} messages (~${offloadTokens} tokens) ` +
-            `were saved. Use ctx_recall to read them back, or ctx_search to find specific details.]`,
+            `[Earlier conversation offloaded to the context file to stay within your ` +
+            `${state.limit}-token budget. ${offloadedUpTo} messages saved. ` +
+            `Use ctx_recall to read them back, or ctx_search to find specific details.]`,
         },
       ],
       timestamp: Date.now(),
+    } as AgentMessage;
+
+    const retained = messages.slice(keepFrom);
+    const retainedTokens = retained.reduce((sum, m) => sum + estimateTokens(m), 0);
+    const markerTokens = estimateTokens(marker);
+    lastRequest = {
+      overhead,
+      request: overhead + retainedTokens + markerTokens,
+      session: currentTokens,
+      kept: retainedTokens + markerTokens,
     };
 
-    // Replace the offloaded prefix with the marker.
-    const newMessages: AgentMessage[] = [marker as AgentMessage, ...messages.slice(keepFrom)];
-
-    return { messages: newMessages };
+    return { messages: [marker, ...retained] };
   });
 
   // -------------------------------------------------------------------------
@@ -208,11 +253,36 @@ export default function (pi: ExtensionAPI) {
       const offloaded = readOffloadStats(cwd);
       const tokens = usage?.tokens ?? null;
       const percent = tokens != null ? Math.round((tokens / state.limit) * 100) : null;
-      const text =
-        `Context limit: ${state.limit} tokens\n` +
-        `Current usage: ${tokens ?? "unknown"} tokens${percent != null ? ` (${percent}% of limit)` : ""}\n` +
-        `Offloaded blocks: ${offloaded.blocks}, ~${offloaded.tokens} tokens in ${offloadPath(cwd)}`;
-      return { content: [{ type: "text", text }], details: { usageTokens: tokens, percent, offloadedBlocks: offloaded.blocks, offloadedTokens: offloaded.tokens } };
+      const lines: string[] = [
+        `Context limit: ${state.limit} tokens`,
+        `Session usage: ${tokens ?? "unknown"} tokens${percent != null ? ` (${percent}% of limit)` : ""}`,
+      ];
+      if (lastRequest) {
+        const reqPct = Math.round((lastRequest.request / state.limit) * 100);
+        lines.push(
+          `Last request sent: ~${lastRequest.request} tokens (${reqPct}% of limit) ` +
+            `= ~${lastRequest.overhead} fixed (prompt+tools) + ~${lastRequest.kept} retained tail`,
+        );
+        if (lastRequest.overhead >= state.limit) {
+          lines.push(
+            `WARNING: prompt+tools alone (~${lastRequest.overhead}) exceed the limit; ` +
+              `no offload can bring a request under budget. Raise it (e.g. /ctxlimit ${lastRequest.overhead + 20000}).`,
+          );
+        }
+      }
+      lines.push(`Offloaded: ${offloaded.blocks} blocks, ~${offloaded.tokens} tokens in ${offloadPath(cwd)}`);
+      const text = lines.join("\n");
+      return {
+        content: [{ type: "text", text }],
+        details: {
+          usageTokens: tokens,
+          percent,
+          offloadedBlocks: offloaded.blocks,
+          offloadedTokens: offloaded.tokens,
+          lastRequestTokens: lastRequest?.request ?? null,
+          overheadTokens: lastRequest?.overhead ?? null,
+        },
+      };
     },
   });
 
