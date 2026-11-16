@@ -1,0 +1,18 @@
+# Runtime state and offload files (created per-project when the extension runs)
+.pi/
+
+# Dependencies
+node_modules/
+
+# Build / typecheck output
+dist/
+*.tsbuildinfo
+
+# Logs
+*.log
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
