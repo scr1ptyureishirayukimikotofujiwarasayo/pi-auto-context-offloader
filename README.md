@@ -48,7 +48,7 @@ Or auto-load globally by placing this folder under
 
 | Command | Effect |
 |---------|--------|
-| `/ctxlimit <n>` | Set the token limit (e.g. `/ctxlimit 33000`). Omit `<n>` to view the current value. Persisted per project. |
+| `/ctxlimit <n>` | Set a custom token limit between **10 and 100000** (e.g. `/ctxlimit 45000`, `/ctxlimit 50k`). Omit `<n>` to view the current value. Persisted per project. |
 | `/ctxstatus` | Show current usage vs limit and offload statistics. |
 
 The default limit is **33,000 tokens**.

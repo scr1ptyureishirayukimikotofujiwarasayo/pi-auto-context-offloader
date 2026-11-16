@@ -14,7 +14,7 @@
  *     a lossy summary. The model retrieves exactly what it needs.
  *
  * Controls:
- *   /ctxlimit <n>        set the token limit (any time), or print current value
+ *   /ctxlimit <n>        set the token limit (10–100000; accepts 20k/50k), or print current
  *   /ctxstatus           print current usage vs limit and offload stats
  *
  * Tools exposed to the model:
@@ -37,6 +37,9 @@ import * as path from "node:path";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_LIMIT = 33_000;
+// Accepted range for a custom /ctxlimit value (tokens).
+const MIN_LIMIT = 10;
+const MAX_LIMIT = 100_000;
 
 interface State {
   limit: number;
@@ -58,9 +61,11 @@ function loadState(cwd: string): State {
   try {
     const raw = fs.readFileSync(statePath(cwd), "utf8");
     const parsed = JSON.parse(raw) as Partial<State>;
-    return {
-      limit: typeof parsed.limit === "number" && parsed.limit > 0 ? parsed.limit : DEFAULT_LIMIT,
-    };
+    const limit =
+      typeof parsed.limit === "number" && parsed.limit > 0
+        ? Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, Math.floor(parsed.limit)))
+        : DEFAULT_LIMIT;
+    return { limit };
   } catch {
     return { limit: DEFAULT_LIMIT };
   }
@@ -425,23 +430,33 @@ export default function (pi: ExtensionAPI) {
   // Commands
   // -------------------------------------------------------------------------
   pi.registerCommand("ctxlimit", {
-    description: "Set or view the conversation token limit",
+    description: `Set or view the conversation token limit (${MIN_LIMIT}–${MAX_LIMIT})`,
     getArgumentCompletions: () => [
       { value: "10000", label: "10000" },
+      { value: "15000", label: "15000" },
       { value: "20000", label: "20000" },
       { value: "33000", label: "33000" },
       { value: "50000", label: "50000" },
+      { value: "75000", label: "75000" },
       { value: "100000", label: "100000" },
     ],
     handler: async (args, ctx) => {
       const trimmed = args?.trim();
       if (!trimmed) {
-        ctx.ui.notify(`Context limit: ${state.limit} tokens`, "info");
+        ctx.ui.notify(
+          `Context limit: ${state.limit} tokens (allowed ${MIN_LIMIT}–${MAX_LIMIT}; type a custom number)`,
+          "info"
+        );
         return;
       }
-      const n = Number(trimmed);
-      if (!Number.isFinite(n) || n < 1000) {
-        ctx.ui.notify(`Invalid limit "${trimmed}". Use a number >= 1000.`, "error");
+      // Accept "10000", "10k", "100 k", "100_000" and similar.
+      const normalized = trimmed.toLowerCase().replace(/[\s_,]/g, "").replace(/k$/, "000");
+      const n = Number(normalized);
+      if (!Number.isFinite(n) || n < MIN_LIMIT || n > MAX_LIMIT) {
+        ctx.ui.notify(
+          `Invalid limit "${trimmed}". Enter a number between ${MIN_LIMIT} and ${MAX_LIMIT} (e.g. 20000, 50k, 100000).`,
+          "error"
+        );
         return;
       }
       state.limit = Math.floor(n);

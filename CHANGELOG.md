@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   from `ctx.sessionManager.getSessionId()`, writing to
   `.pi/ctx-offload-<sessionId>.log` instead of a single shared `ctx-offload.log`.
   All `ctx_*` tools read the same per-session file.
+- `/ctxlimit` now accepts a **custom limit between 10 and 100000** tokens
+  (validated on set and clamped when loading persisted state), and accepts
+  shorthand like `50k` / `100 k` / `33,000`.
 - `ctx_status` now reports the **effective request size** (`overhead + retained
   tail`) and warns when the fixed prompt+tools overhead alone exceeds the limit
   (an unreachable target), suggesting a larger `/ctxlimit`.
