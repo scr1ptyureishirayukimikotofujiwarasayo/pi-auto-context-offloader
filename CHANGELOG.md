@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `/ctxlimit` autocomplete no longer hijacks a typed custom value: it now
+  filters by the typed prefix and returns `null` once a valid custom number
+  is entered, so Enter submits exactly what was typed instead of a preset.
 - Duplicate/quadratic growth: because the `context` hook is non-destructive and
   fires before every LLM call, the same prefix was re-appended repeatedly (seen
   up to 45x for one block). Offloading is now **incremental** (`offloadedUpTo`)

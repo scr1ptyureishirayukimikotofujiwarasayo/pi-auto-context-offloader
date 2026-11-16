@@ -431,15 +431,20 @@ export default function (pi: ExtensionAPI) {
   // -------------------------------------------------------------------------
   pi.registerCommand("ctxlimit", {
     description: `Set or view the conversation token limit (${MIN_LIMIT}–${MAX_LIMIT})`,
-    getArgumentCompletions: () => [
-      { value: "10000", label: "10000" },
-      { value: "15000", label: "15000" },
-      { value: "20000", label: "20000" },
-      { value: "33000", label: "33000" },
-      { value: "50000", label: "50000" },
-      { value: "75000", label: "75000" },
-      { value: "100000", label: "100000" },
-    ],
+    getArgumentCompletions: (prefix: string) => {
+      const presets = ["10000", "15000", "20000", "33000", "50000", "75000", "100000"];
+      const p = (prefix ?? "").trim().toLowerCase();
+      if (!p) return presets.map((v) => ({ value: v, label: v }));
+      // If the typed text is already a complete, valid custom limit that is not
+      // one of the presets, stop suggesting — otherwise Enter would replace the
+      // user's custom number with the highlighted preset.
+      const normalized = p.replace(/[\s_,]/g, "").replace(/k$/, "000");
+      const n = Number(normalized);
+      const isPreset = presets.includes(String(n));
+      if (Number.isFinite(n) && n >= MIN_LIMIT && n <= MAX_LIMIT && !isPreset) return null;
+      const filtered = presets.filter((v) => v.startsWith(p));
+      return filtered.length > 0 ? filtered.map((v) => ({ value: v, label: v })) : null;
+    },
     handler: async (args, ctx) => {
       const trimmed = args?.trim();
       if (!trimmed) {
