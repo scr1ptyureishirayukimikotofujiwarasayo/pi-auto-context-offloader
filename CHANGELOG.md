@@ -19,3 +19,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ctx_search` tool — keyword search across the offload file.
 - `ctx_offload` tool — append a note/summary to the offload file, or request
   oldest-message offload.
+
+## [0.2.0] - 2026-11-16
+
+### Changed
+
+- **One offload file per conversation**: the path is resolved at `session_start`
+  from `ctx.sessionManager.getSessionId()`, writing to
+  `.pi/ctx-offload-<sessionId>.log` instead of a single shared `ctx-offload.log`.
+  All `ctx_*` tools read the same per-session file.
+- `ctx_status` now reports the **effective request size** (`overhead + retained
+  tail`) and warns when the fixed prompt+tools overhead alone exceeds the limit
+  (an unreachable target), suggesting a larger `/ctxlimit`.
+
+### Fixed
+
+- Duplicate/quadratic growth: because the `context` hook is non-destructive and
+  fires before every LLM call, the same prefix was re-appended repeatedly (seen
+  up to 45x for one block). Offloading is now **incremental** (`offloadedUpTo`)
+  and identical blocks are de-duplicated via a rebuilt block index.

@@ -66,10 +66,13 @@ The default limit is **33,000 tokens**.
 
 - The extension hooks Pi's `context` event, which fires before every LLM call.
 - When projected usage exceeds the limit, the oldest messages are serialized with
-  `serializeConversation` and appended to `.pi/ctx-offload.log`, then replaced
-  in-context by a single compact marker message.
-- The marker tells the model how many messages (~tokens) were saved and how to
-  recover them with `ctx_recall` / `ctx_search`.
+  `serializeConversation` and appended to `.pi/ctx-offload-<sessionId>.log`,
+  then replaced in-context by a single compact marker message.
+- Offloading is **incremental**: only messages not yet written this session are
+  appended (tracked via `offloadedUpTo`), and identical blocks are de-duplicated,
+  so the file does not grow quadratically or repeat the same prefix per call.
+- The marker tells the model how many messages were saved and how to recover
+  them with `ctx_recall` / `ctx_search`.
 - The limit is stored in `.pi/ctx-manager.json` (per working directory).
 
 ### Files created at runtime
@@ -77,7 +80,7 @@ The default limit is **33,000 tokens**.
 | Path | Contents |
 |------|----------|
 | `.pi/ctx-manager.json` | Persisted token limit for the project. |
-| `.pi/ctx-offload.log` | Append-only offloaded conversation content. |
+| `.pi/ctx-offload-<sessionId>.log` | Append-only offloaded content — **one file per conversation**. |
 
 Both live under the current working directory and are git-ignored by default.
 
