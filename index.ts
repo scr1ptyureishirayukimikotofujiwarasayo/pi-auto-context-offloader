@@ -16,6 +16,7 @@
  * Controls:
  *   /ctxlimit <n>        set the token limit (10–100000; accepts 20k/50k), or print current
  *   /ctxstatus           print current usage vs limit and offload stats
+ *   /clearcontext [all]  delete offloaded files for this conversation (or all)
  *
  * Tools exposed to the model:
  *   ctx_recall           read back a range / the latest offloaded content
@@ -51,10 +52,11 @@ function statePath(cwd: string): string {
 }
 
 function offloadPath(cwd: string): string {
-  // One offload file per conversation. `currentOffloadFile` is resolved at
-  // session start from the session id; the cwd-based path is only a fallback
-  // for the rare case a tool runs before session_start has fired.
-  return currentOffloadFile || path.join(cwd, ".pi", "ctx-offload.log");
+  // One folder per conversation, resolved at session start from the session id:
+  //   <cwd>/.pi/offload/<sessionId>/offload.log
+  // The cwd-based path is only a fallback for the rare case a tool runs before
+  // session_start has fired.
+  return currentOffloadFile || path.join(cwd, ".pi", "offload", "default", "offload.log");
 }
 
 function loadState(cwd: string): State {
@@ -134,7 +136,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
     state = loadState(cwd);
-    // Per-conversation offload file: <cwd>/.pi/ctx-offload-<sessionId>.log
+    // Per-conversation folder: <cwd>/.pi/offload/<sessionId>/offload.log
     let sid = "default";
     try {
       sid = ctx.sessionManager.getSessionId();
@@ -142,7 +144,7 @@ export default function (pi: ExtensionAPI) {
       /* ephemeral session: fall back to default */
     }
     const safe = String(sid).replace(/[^A-Za-z0-9._-]/g, "-");
-    currentOffloadFile = path.join(cwd, ".pi", `ctx-offload-${safe}.log`);
+    currentOffloadFile = path.join(cwd, ".pi", "offload", safe, "offload.log");
     nextOffloadId = 1;
     // Rebuild the dedupe index from the existing file so we never append a block
     // whose content is already present, and continue ids after the highest seen.
@@ -480,6 +482,65 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify(
         `Limit ${state.limit} | used ${tokens ?? "?"}${percent != null ? ` (${percent}%)` : ""} | ` +
           `offloaded ${stats.blocks} blocks (~${stats.tokens} tok)`,
+        "info"
+      );
+    },
+  });
+
+  pi.registerCommand("clearcontext", {
+    description: "Delete offloaded context files (this conversation, or `all`)",
+    getArgumentCompletions: (prefix: string) => {
+      const items = [
+        { value: "all", label: "all — every conversation" },
+        { value: "current", label: "current — this conversation only" },
+      ];
+      const p = (prefix ?? "").trim().toLowerCase();
+      if (!p) return items;
+      const f = items.filter((i) => i.value.startsWith(p));
+      return f.length > 0 ? f : null;
+    },
+    handler: async (args, ctx) => {
+      const scope = (args ?? "").trim().toLowerCase();
+      const root = path.join(cwd, ".pi", "offload");
+      // Reset the in-memory offload bookkeeping so a fresh dump starts at block 1.
+      const resetState = () => {
+        offloadedUpTo = 0;
+        offloadIndex = new Map();
+        nextOffloadId = 1;
+      };
+
+      if (scope === "all") {
+        let removed = 0;
+        try {
+          for (const name of fs.readdirSync(root)) {
+            const p = path.join(root, name);
+            if (fs.statSync(p).isDirectory()) {
+              fs.rmSync(p, { recursive: true, force: true });
+              removed++;
+            }
+          }
+        } catch {
+          /* no offload dir yet */
+        }
+        resetState();
+        ctx.ui.notify(`Cleared ${removed} conversation offload folder(s).`, "info");
+        return;
+      }
+
+      // Default: current conversation only.
+      const dir = path.dirname(offloadPath(cwd));
+      let existed = false;
+      try {
+        existed = fs.existsSync(dir);
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+      resetState();
+      ctx.ui.notify(
+        existed
+          ? `Cleared offloaded context for this conversation (${path.basename(dir)}).`
+          : `No offloaded context to clear for this conversation (${path.basename(dir)}).`,
         "info"
       );
     },

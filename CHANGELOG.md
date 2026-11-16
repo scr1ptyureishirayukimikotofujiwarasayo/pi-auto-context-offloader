@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.2.0] - 2026-11-16
 
+### Added
+
+- `/clearcontext` command — deletes this conversation's offload folder
+  (`.pi/offload/<sessionId>/`); `/clearcontext all` wipes every conversation's
+  offload folder. Resets in-memory block counters so a fresh dump starts at block 1.
+- Offload content is now stored **one folder per conversation** at
+  `.pi/offload/<sessionId>/offload.log` instead of a flat file per session.
+
 ### Changed
 
 - **One offload file per conversation**: the path is resolved at `session_start`

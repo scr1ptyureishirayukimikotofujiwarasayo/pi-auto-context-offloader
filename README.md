@@ -50,6 +50,7 @@ Or auto-load globally by placing this folder under
 |---------|--------|
 | `/ctxlimit <n>` | Set a custom token limit between **10 and 100000** (e.g. `/ctxlimit 45000`, `/ctxlimit 50k`). Omit `<n>` to view the current value. Persisted per project. |
 | `/ctxstatus` | Show current usage vs limit and offload statistics. |
+| `/clearcontext` | Delete the offloaded files for **this conversation** (`.pi/offload/<sessionId>/`). Use `/clearcontext all` to wipe every conversation's offload folder. |
 
 The default limit is **33,000 tokens**.
 
@@ -66,7 +67,7 @@ The default limit is **33,000 tokens**.
 
 - The extension hooks Pi's `context` event, which fires before every LLM call.
 - When projected usage exceeds the limit, the oldest messages are serialized with
-  `serializeConversation` and appended to `.pi/ctx-offload-<sessionId>.log`,
+  `serializeConversation` and appended to `.pi/offload/<sessionId>/offload.log`,
   then replaced in-context by a single compact marker message.
 - Offloading is **incremental**: only messages not yet written this session are
   appended (tracked via `offloadedUpTo`), and identical blocks are de-duplicated,
@@ -80,7 +81,7 @@ The default limit is **33,000 tokens**.
 | Path | Contents |
 |------|----------|
 | `.pi/ctx-manager.json` | Persisted token limit for the project. |
-| `.pi/ctx-offload-<sessionId>.log` | Append-only offloaded content — **one file per conversation**. |
+| `.pi/offload/<sessionId>/offload.log` | Append-only offloaded content — **one folder per conversation**. |
 
 Both live under the current working directory and are git-ignored by default.
 
