@@ -48,7 +48,10 @@ function statePath(cwd: string): string {
 }
 
 function offloadPath(cwd: string): string {
-  return path.join(cwd, ".pi", "ctx-offload.log");
+  // One offload file per conversation. `currentOffloadFile` is resolved at
+  // session start from the session id; the cwd-based path is only a fallback
+  // for the rare case a tool runs before session_start has fired.
+  return currentOffloadFile || path.join(cwd, ".pi", "ctx-offload.log");
 }
 
 function loadState(cwd: string): State {
@@ -86,6 +89,9 @@ let nextOffloadId = 1;
 // mutated), so the same leading messages get offered for offload on each call.
 // Without this index we would append the identical block over and over.
 let offloadIndex = new Map<string, number>();
+// Absolute path of the offload file for the current conversation, set on
+// session_start from the session id so each conversation gets its own file.
+let currentOffloadFile = "";
 
 function appendOffload(cwd: string, messages: AgentMessage[], tokens: number): { id: number; start: number } {
   const text = serializeConversation(convertToLlm(messages));
@@ -123,6 +129,15 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
     state = loadState(cwd);
+    // Per-conversation offload file: <cwd>/.pi/ctx-offload-<sessionId>.log
+    let sid = "default";
+    try {
+      sid = ctx.sessionManager.getSessionId();
+    } catch {
+      /* ephemeral session: fall back to default */
+    }
+    const safe = String(sid).replace(/[^A-Za-z0-9._-]/g, "-");
+    currentOffloadFile = path.join(cwd, ".pi", `ctx-offload-${safe}.log`);
     nextOffloadId = 1;
     // Rebuild the dedupe index from the existing file so we never append a block
     // whose content is already present, and continue ids after the highest seen.
