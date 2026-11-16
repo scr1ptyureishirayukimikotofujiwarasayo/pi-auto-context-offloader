@@ -1,4 +1,4 @@
-# pi-auto-context-manager
+# pi-auto-context-offloader
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Pi Package](https://img.shields.io/badge/pi-package-blue)](https://pi.dev/packages)
@@ -24,15 +24,15 @@ tools, and explicitly offload whatever it deems unnecessary.
 As a Pi package (npm or git):
 
 ```bash
-pi install npm:pi-auto-context-manager
+pi install npm:pi-auto-context-offloader
 # or
-pi install git:github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-manager
+pi install git:github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-offloader
 ```
 
 For a single invocation without installing:
 
 ```bash
-pi -e git:github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-manager
+pi -e git:github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-offloader
 ```
 
 From a local checkout:
@@ -42,7 +42,7 @@ pi --extension ./index.ts
 ```
 
 Or auto-load globally by placing this folder under
-`~/.pi/agent/extensions/pi-auto-context-manager/`, then `/reload`.
+`~/.pi/agent/extensions/pi-auto-context-offloader/`, then `/reload`.
 
 ## Usage
 

@@ -1,5 +1,5 @@
 {
-  "name": "pi-auto-context-manager",
+  "name": "pi-auto-context-offloader",
   "version": "0.1.0",
   "description": "Pi extension that keeps conversations under a configurable token budget by offloading old turns to a file the model can recall and search.",
   "keywords": [
@@ -48,10 +48,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-manager.git"
+    "url": "git+https://github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-offloader.git"
   },
   "bugs": {
-    "url": "https://github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-manager/issues"
+    "url": "https://github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-offloader/issues"
   },
-  "homepage": "https://github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-manager#readme"
+  "homepage": "https://github.com/scr1ptyureishirayukimikotofujiwarasayo/pi-auto-context-offloader#readme"
 }
