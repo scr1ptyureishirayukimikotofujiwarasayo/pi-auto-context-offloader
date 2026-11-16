@@ -123,7 +123,24 @@ export default function (pi: ExtensionAPI) {
     // messages that fit within the budget (minus a safety margin), preserving
     // the tail of the conversation so the model stays coherent.
     const margin = Math.floor(state.limit * 0.1);
-    const keepBudget = state.limit - margin;
+    const targetTotal = state.limit - margin;
+
+    // Tokens that are NOT part of `messages` (system prompt, tool schemas, etc.).
+    // `currentTokens` counts the whole context, so we must reserve this fixed
+    // overhead before budgeting the message tail — otherwise, with a large
+    // system prompt, the message budget would look bottomless and nothing would
+    // ever be offloaded despite the context being over the limit.
+    const messageTokens = estimateTotal(messages);
+    const overhead = Math.max(0, currentTokens - messageTokens);
+
+    // Budget available for the retained message tail. When the fixed overhead
+    // alone already exceeds the limit, the target is unreachable — fall back to
+    // keeping a small coherent tail (~15% of the limit) so growth stays bounded
+    // without wiping the conversation on every turn.
+    const unreachable = overhead >= state.limit;
+    const keepBudget = unreachable
+      ? Math.floor(state.limit * 0.15)
+      : Math.max(0, targetTotal - overhead);
 
     // Walk from the newest message backwards to find the earliest index we keep.
     let keepFrom = messages.length;
