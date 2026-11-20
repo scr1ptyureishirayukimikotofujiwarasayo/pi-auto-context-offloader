@@ -5,25 +5,29 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] - 2026-11-20
+## [0.3.0] - 2026-11-20
 
 ### Added
 
-- Complete request accounting through Pi's `context_with_system` event,
-  including the current system prompt, dynamic sections, and tool definitions.
-- Provider-usage calibration based on `input + cacheRead + cacheWrite`.
-- Prompt-cache pinning and hysteresis so the system head and offload marker stay
-  stable between cuts.
-- Lossless, turn-aligned offload chunks and bounded, paginated retrieval.
-- Regression tests for cache stability, tool-call boundaries, calibration,
-  deduplication, retrieval, manual trimming, and chunk sizing.
+- Full-request budgeting through `context_with_system` and `getCurrentSystemMessage()`
+  (accounts for system prompt, dynamic sections, and tool schemas directly instead
+  of relying on stale post-offload `getContextUsage()`).
+- Prompt-cache preservation via hysteresis (`~55%` low-water target of available
+  conversation budget) and pinned `[head, marker]` prefixes across turns.
+- Provider-usage calibration in `message_end` (`input + cacheRead + cacheWrite`)
+  plus cache-hit and estimated-savings metrics in `ctx_status` / `/ctxstatus`.
+- Lossless turn-aligned ~2k-token chunking (`serializeMessagesLossless` +
+  SHA-1 deduplication), bounded `ctx_search` excerpts, and `blockId` / `order` /
+  `offset` pagination in `ctx_recall`.
+- Functional `ctx_offload` count/auto trimming and `session_tree` /
+  `session_compact` / `model_select` state resets.
+- Regression test suite (`npm test` -> `test/index.test.ts`).
 
 ### Changed
 
-- Preserve assistant tool calls together with their tool results at cut points.
-- Keep full tool outputs in per-session offload logs instead of truncating them.
-- Expose host packages as peer dependencies and add package test/typecheck
-  scripts.
+- Cut-point selection never splits `assistant(toolCall)` from its `toolResult`
+  messages, preventing orphaned-tool-result errors.
+- Bumped package version to `0.3.0` and updated `package-lock.json` and `README.md`.
 
 ## [0.2.0] - 2026-11-16
 

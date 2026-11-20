@@ -1,6 +1,6 @@
 {
   "name": "pi-auto-context-offloader",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Pi extension that keeps conversations under a configurable token budget by offloading old turns to a file the model can recall and search.",
   "keywords": [
     "pi-package",
