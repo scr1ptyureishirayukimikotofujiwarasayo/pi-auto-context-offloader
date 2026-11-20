@@ -5,20 +5,25 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.1.0] - 2026-11-16
+## [0.2.0] - 2026-11-20
 
 ### Added
 
-- `context` hook that auto-offloads the oldest conversation turns to
-  `.pi/ctx-offload.log` when the live context exceeds the configured limit.
-- `/ctxlimit <n>` command to set or view the token limit (persisted per project
-  in `.pi/ctx-manager.json`).
-- `/ctxstatus` command to show usage vs limit and offload statistics.
-- `ctx_status` tool — report budget usage and offload stats.
-- `ctx_recall` tool — read back offloaded blocks (newest first, optional filter).
-- `ctx_search` tool — keyword search across the offload file.
-- `ctx_offload` tool — append a note/summary to the offload file, or request
-  oldest-message offload.
+- Complete request accounting through Pi's `context_with_system` event,
+  including the current system prompt, dynamic sections, and tool definitions.
+- Provider-usage calibration based on `input + cacheRead + cacheWrite`.
+- Prompt-cache pinning and hysteresis so the system head and offload marker stay
+  stable between cuts.
+- Lossless, turn-aligned offload chunks and bounded, paginated retrieval.
+- Regression tests for cache stability, tool-call boundaries, calibration,
+  deduplication, retrieval, manual trimming, and chunk sizing.
+
+### Changed
+
+- Preserve assistant tool calls together with their tool results at cut points.
+- Keep full tool outputs in per-session offload logs instead of truncating them.
+- Expose host packages as peer dependencies and add package test/typecheck
+  scripts.
 
 ## [0.2.0] - 2026-11-16
 
@@ -52,3 +57,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   fires before every LLM call, the same prefix was re-appended repeatedly (seen
   up to 45x for one block). Offloading is now **incremental** (`offloadedUpTo`)
   and identical blocks are de-duplicated via a rebuilt block index.
+
+## [0.1.0] - 2026-11-16
+
+### Added
+
+- `context` hook that auto-offloads the oldest conversation turns to
+  `.pi/ctx-offload.log` when the live context exceeds the configured limit.
+- `/ctxlimit <n>` command to set or view the token limit (persisted per project
+  in `.pi/ctx-manager.json`).
+- `/ctxstatus` command to show usage vs limit and offload statistics.
+- `ctx_status` tool — report budget usage and offload stats.
+- `ctx_recall` tool — read back offloaded blocks (newest first, optional filter).
+- `ctx_search` tool — keyword search across the offload file.
+- `ctx_offload` tool — append a note/summary to the offload file, or request
+  oldest-message offload.
