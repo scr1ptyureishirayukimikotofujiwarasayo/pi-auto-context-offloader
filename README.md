@@ -58,22 +58,30 @@ The default limit is **33,000 tokens**.
 
 | Tool | Purpose |
 |------|---------|
-| `ctx_status` | Report usage vs limit and offload statistics. |
-| `ctx_recall` | Read back the latest offloaded blocks (newest first, optional substring filter). |
-| `ctx_search` | Keyword-search the offload file. |
-| `ctx_offload` | Append a note/summary to the offload file, or request oldest-message offload. |
+| `ctx_status` | Report full-session vs effective request tokens, cache stability, and offload statistics. |
+| `ctx_recall` | Read back offloaded blocks (by `count`, `blockId`, `query`, `order`, and paginated `offset`). |
+| `ctx_search` | Keyword-search the offload file and return compact matching excerpts with block IDs. |
+| `ctx_offload` | Append a note/summary to the offload file, or schedule an oldest-message trim on the next LLM call. |
 
 ## How it works
 
-- The extension hooks Pi's `context` event, which fires before every LLM call.
-- When projected usage exceeds the limit, the oldest messages are serialized with
-  `serializeConversation` and appended to `.pi/offload/<sessionId>/offload.log`,
-  then replaced in-context by a single compact marker message.
-- Offloading is **incremental**: only messages not yet written this session are
-  appended (tracked via `offloadedUpTo`), and identical blocks are de-duplicated,
-  so the file does not grow quadratically or repeat the same prefix per call.
-- The marker tells the model how many messages were saved and how to recover
-  them with `ctx_recall` / `ctx_search`.
+- The extension hooks Pi's `context_with_system` event, which fires before every
+  LLM call with the complete message array including the system prompt and tool
+  definitions (`getCurrentSystemMessage()`).
+- **Hysteresis & prompt-cache pinning**: when calibrated request tokens exceed
+  the limit, the oldest turns are offloaded down to a low-water target (~55% of
+  available conversation budget) and the `[system head, offload marker]` prefix
+  is pinned across subsequent turns until the growing tail reaches the limit
+  again. This preserves provider prompt caches across consecutive calls instead
+  of invalidating the prefix every turn.
+- **Usage calibration**: `message_end` compares estimated request tokens against
+  provider-reported input tokens (`input + cacheRead + cacheWrite`) so budget
+  enforcement adapts to tokenizer differences and system-prompt extensions.
+- **Turn-boundary safety & lossless storage**: cuts never split
+  `assistant(toolCall)` from its `toolResult` messages. Offloaded turns are
+  saved in ~2k-token deduplicated chunks to `.pi/offload/<sessionId>/offload.log`
+  without truncating tool outputs, while `ctx_search` returns bounded excerpts
+  and `ctx_recall` paginates large blocks safely.
 - The limit is stored in `.pi/ctx-manager.json` (per working directory).
 
 ### Files created at runtime
@@ -90,6 +98,7 @@ Both live under the current working directory and are git-ignored by default.
 ```bash
 npm install
 npm run typecheck
+npm test
 ```
 
 The extension is a single TypeScript file (`index.ts`) loaded by Pi via
